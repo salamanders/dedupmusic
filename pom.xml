@@ -44,6 +44,12 @@
             <url>https://jitpack.io</url>
         </repository>
 
+
+            <repository>
+                <id>jaudiotagger-repository</id>
+                <url>https://dl.bintray.com/ijabz/maven</url>
+            </repository>
+
     </repositories>
 
 
@@ -83,8 +89,15 @@
         <dependency>
             <groupId>com.github.salamanders</groupId>
             <artifactId>utils</artifactId>
-            <version>0d9345ca4e</version>
+            <version>9f9b64ae72</version>
         </dependency>
+
+        <dependency>
+            <groupId>com.mpatric</groupId>
+            <artifactId>mp3agic</artifactId>
+            <version>0.9.1</version>
+        </dependency>
+
 
     </dependencies>
 

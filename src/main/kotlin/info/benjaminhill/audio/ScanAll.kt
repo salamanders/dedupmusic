@@ -1,97 +1,84 @@
 package info.benjaminhill.audio
 
-import info.benjaminhill.utils.CountHits
-import info.benjaminhill.utils.concurrentIndexedMap
-import info.benjaminhill.utils.runCommand
+import info.benjaminhill.audio.AudioInfo.Companion.toAudioInfo
+import info.benjaminhill.utils.LogInfrequently
+import info.benjaminhill.utils.pMap
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.time.ExperimentalTime
+import kotlin.time.seconds
 
-const val CRC_START = "CRC=0x"
 val SAVED_RESULTS_FILE = File("audio_scan.tsv")
+const val MAX_CHROMA_DIFFERENCE = 10.0
 
 @ExperimentalTime
-@ExperimentalCoroutinesApi
-/**
- * @return {Pair<List<String>, List<String>>} output, errors (which may not be bad)
- */
-private suspend fun audioToCrc(file: File) = runCommand(
-    arrayOf(
-        "/usr/local/bin/ffmpeg",
-        "-nostdin",
-        "-t", "120", // matches fpcalc default
-        "-i", file.absolutePath, // NOT quoted
-        "-c:a", "copy",
-        "-f", "crc", "-"
-    )
-).toList().partition { it.startsWith(CRC_START) }
-
-const val CHROMA_FP = "FINGERPRINT="
-
-@ExperimentalTime
-@ExperimentalCoroutinesApi
-private suspend fun audioToChromaprint(file: File) = runCommand(
-    arrayOf(
-        "fpcalc",
-        "-raw", // list of integers FINGERPRINT=
-        //"-signed", // pg_acoustid compatibility
-        file.absolutePath
-    )
-).toList().partition { it.startsWith(CHROMA_FP) }
+val MAX_DURATION_DIFFERENCE = 10.seconds
 
 @ExperimentalTime
 @ExperimentalUnsignedTypes
 @ExperimentalCoroutinesApi
-fun main() = runBlocking {
-    val hits = CountHits(hitFrequency = 100)
-    val allFiles = listOf("Music", "beets_music", "picard_music")
-        .flatMap { File(System.getProperty("user.home"), it).walk() }
-        .filter { listOf("mp3", "m4a").contains(it.extension.toLowerCase()) }
+fun main() = runBlocking(Dispatchers.IO) {
+    val hits = LogInfrequently()
 
-    println("Total Files: ${allFiles.size}")
+    if (!SAVED_RESULTS_FILE.exists()) {
+        val allFiles = listOf("Music", "beets_music", "picard_music")
+            .flatMap { File(System.getProperty("user.home"), it).walk() }
+            .filter { listOf("mp3", "m4a").contains(it.extension.toLowerCase()) }
 
-    SAVED_RESULTS_FILE.printWriter().use { out ->
-        allFiles
-            .asFlow()
-            .concurrentIndexedMap(concurrencyLevel = Runtime.getRuntime().availableProcessors()) { _, mp3file ->
-                val crc = audioToCrc(mp3file).let { (resultsCrc, errors) ->
-                    if (resultsCrc.size == 1) {
-                        resultsCrc.first().substring(CRC_START.length).toULong(radix = 16)
-                    } else {
-                        println("Error getting CRC for ${mp3file.canonicalPath}:")
-                        println(resultsCrc.joinToString("\n"))
-                        println(errors.joinToString("\n"))
-                        null
-                    }
+        println("Fingerprinting and saving ${allFiles.size} audio files.")
+        SAVED_RESULTS_FILE.printWriter().use { out ->
+            allFiles
+                .asFlow()
+                .pMap { _, mp3file ->
+                    hits.hit()
+                    mp3file.toAudioInfo()
                 }
-
-                val chroma: List<UInt>? = audioToChromaprint(mp3file).let { (resultChroma, errors) ->
-                    if (resultChroma.size == 1) {
-                        resultChroma.first().substring(CHROMA_FP.length).split(",").map { it.toUInt() }
-                    } else {
-                        println("Error getting Chromaprint for ${mp3file.canonicalPath}:")
-                        println(resultChroma.joinToString("\n"))
-                        println(errors.joinToString("\n"))
-                        null
-                    }
-                }
-                hits.hit()
-                if (crc != null && chroma != null) {
-                    Triple(mp3file, crc, chroma)
-                } else {
-                    null
-                }
-            }
-            .filterNotNull()
-            .toList()
-            .sortedBy { it.first.absolutePath }
-            .forEach { (file, crc, chroma) ->
-                out.println("${file.absolutePath}\t$crc\t${chroma.joinToString(",")}")
-            }
+                .filterNotNull()
+                .toList()
+                .sortedBy { it.file.absolutePath }
+                .forEach { audioInfo -> out.println(audioInfo) }
+        }
     }
 
+    val files = SAVED_RESULTS_FILE.readLines().map { it.toAudioInfo() }.filter { it.file.exists() }
+    println("Read saved info.  Comparing ${files.size} existing files with valid info.")
+
+    println("# Exact Duplicates (CRC)")
+    files.groupBy { it.crc }
+        .filterValues { it.size > 1 }
+        .forEach { (crc, paths) ->
+            println(crc)
+            paths.forEach {
+                println("  ${it.file.absolutePath}")
+            }
+        }
+
+    println("# Near Duplicates (chromaprint)")
+    val bestFriends = files.asFlow()
+        .pMap { index, audioInfo ->
+            hits.hit()
+            files.drop(index + 1)
+                .filter { audioInfo.duration.minus(it.duration).absoluteValue < MAX_DURATION_DIFFERENCE }
+                .map { Triple(audioInfo, it, audioInfo chromaDistance it) }
+                .toList().minByOrNull { it.third }
+        }.filterNotNull()
+        .filter { it.third < MAX_CHROMA_DIFFERENCE }
+        .toList()
+        .sortedBy { it.third }
+
+    val pathPrefixSize = System.getProperty("user.home").length
+    bestFriends.forEachIndexed { idx, (audioInfo0, audioInfo1, distance) ->
+        println(
+            "$idx: '${audioInfo0.file.absolutePath.drop(pathPrefixSize)}' to '${
+                audioInfo1.file.absolutePath.drop(pathPrefixSize)
+            }' = $distance"
+        )
+    }
 }
+

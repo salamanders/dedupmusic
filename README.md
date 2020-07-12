@@ -15,9 +15,12 @@ CRCs will not work with the same song compressed twice,
 or for songs compressed at two different bitrates.
 
 The chromaprint is used to find audio distances, 
-and a bit xor distance of < 8 is likely a duplicate.
+and a bit xor distance of < 8 is increasingly likely to be a duplicate.
 
 FindDup.kt lists out likely duplicates.
+
+All parts use kotlin flows with coroutines to perform operations in parallel
+and should use all cores.
 
 ## TODO
 
