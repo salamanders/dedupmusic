@@ -1,16 +1,15 @@
 package info.benjaminhill.audio
 
-import info.benjaminhill.utils.retryOrNull
+import com.google.gson.Gson
+import com.mpatric.mp3agic.Mp3File
 import info.benjaminhill.utils.runCommand
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.toList
 import java.io.File
+import java.net.URI
 import kotlin.time.Duration
 import kotlin.time.ExperimentalTime
 import kotlin.time.seconds
-
-
-// TODO: https://github.com/mpatric/mp3agic
 
 
 /**
@@ -18,106 +17,78 @@ import kotlin.time.seconds
  */
 @ExperimentalUnsignedTypes
 @ExperimentalTime
-data class AudioInfo(
-    val file: File,
-    val bytes: ULong = file.length().toULong(),
+ class AudioInfo(
+    val uri: URI,
+    val bytes: Long = File(uri).length(),
+    val bitrate: Int,
     val duration: Duration,
-    val crc: ULong,
-    val chroma: List<UInt>,
+    val chroma: UIntArray,
 ) {
-
-    override fun toString(): String = listOf(
-        file.absolutePath,
-        bytes,
-        duration.inSeconds.toInt(),
-        crc,
-        chroma.joinToString(","),
-    ).joinToString("\t")
+    override fun toString(): String = GSON.toJson(this)!!
 
 
+
+    fun file(): File = File(uri)
+    val fileLazy :File by lazy { File(uri) }
+
+    fun fileParentName(): String = "${file().parentFile.name}/${file().name}"
+
+
+    /**
+     * @return percent distance (0.0..1.0)
+     */
     @ExperimentalUnsignedTypes
     infix fun chromaDistance(other: AudioInfo): Double = chroma.zip(other.chroma).map { (c0, c1) ->
-        (c0 xor c1).countOneBits()
+        (c0 xor c1).countOneBits() / UInt.SIZE_BITS.toDouble()
     }.also {
         require(it.isNotEmpty())
     }.average()
 
     companion object {
 
-        fun String.toAudioInfo() = split('\t').let { (file, bytes, durationSec, crc, chromas) ->
+        private val GSON = Gson()
+
+        fun String.toAudioInfo() = GSON.fromJson(this, AudioInfo::class.java)!!
+
+        @ExperimentalCoroutinesApi
+        @ExperimentalUnsignedTypes
+        @ExperimentalTime
+        suspend fun File.toAudioInfo(): AudioInfo? = try {
+            val chroma = this.toChromaprint() ?: error("Chroma failed: $absolutePath")
+            val duration: Duration
+            val bitrate: Int
+            Mp3File(this).also {
+                duration = it.lengthInSeconds.seconds
+                bitrate = it.bitrate
+            }
             AudioInfo(
-                file = File(file),
-                bytes = bytes.toULong(),
-                duration = durationSec.toInt().seconds,
-                crc = crc.toULong(),
-                chroma = chromas.split(",").map { it.toUInt() },
+                uri = this.absoluteFile.toURI(),
+                bitrate = bitrate,
+                duration = duration,
+                chroma = chroma,
             )
+        } catch (e: Exception) {
+            println("Skipping ${this.absolutePath}: $e")
+            null
         }
-
-        @ExperimentalCoroutinesApi
-        @ExperimentalUnsignedTypes
-        @ExperimentalTime
-        suspend fun File.toAudioInfo(): AudioInfo? {
-            val crc: ULong? = retryOrNull { audioToCrc(this) }
-            if (crc == null) {
-                println("Retry CRC failed: $absolutePath")
-            }
-            val chromaDuration = retryOrNull { audioToChromaprintDuration(this) }
-            if (chromaDuration?.first == null || chromaDuration.second == null) {
-                println("Retry chroma failed: $absolutePath")
-            }
-            return if (crc != null && chromaDuration != null &&
-                chromaDuration.first != null && chromaDuration.second != null
-            ) {
-                AudioInfo(
-                    file = this,
-                    crc = crc,
-                    chroma = chromaDuration.first!!,
-                    duration = chromaDuration.second!!.seconds
-                )
-            } else {
-                null
-            }
-        }
-
-        private const val CHROMA_FP = "FINGERPRINT="
-        private const val CHROMA_DURATION = "DURATION="
 
         @ExperimentalUnsignedTypes
         @ExperimentalTime
         @ExperimentalCoroutinesApi
-        private suspend fun audioToChromaprintDuration(file: File): Pair<List<UInt>?, Int?>? = runCommand(
-            arrayOf(
-                "fpcalc",
-                "-raw", // list of integers FINGERPRINT=
-                //"-signed", // pg_acoustid compatibility
-                file.absolutePath
+        internal suspend fun File.toChromaprint(): UIntArray? {
+            val chromaFpHeader = "FINGERPRINT="
+            return runCommand(
+                command = arrayOf(
+                    "fpcalc",
+                    "-raw", // list of integers FINGERPRINT=
+                    //"-signed", // pg_acoustid compatibility
+                    this.absolutePath
+                ),
+                maxDuration = 10.seconds
             )
-        ).toList().let { results ->
-            Pair(
-                results.firstOrNull { it.startsWith(CHROMA_FP) }?.substring(CHROMA_FP.length)?.split(",")
-                    ?.map { it.toUInt() },
-                results.firstOrNull { it.startsWith(CHROMA_DURATION) }?.substring(CHROMA_DURATION.length)?.toInt()
-            )
+                .toList()
+                .firstOrNull { it.startsWith(chromaFpHeader) }?.substring(chromaFpHeader.length)
+                ?.split(",")?.map { it.toUInt() }?.toUIntArray()
         }
-
-        private const val CRC_START = "CRC=0x"
-
-        @ExperimentalUnsignedTypes
-        @ExperimentalTime
-        @ExperimentalCoroutinesApi
-        /**
-         * @return {Pair<List<String>, List<String>>} output, errors (which may not be bad)
-         */
-        private suspend fun audioToCrc(file: File) = runCommand(
-            arrayOf(
-                "/usr/local/bin/ffmpeg",
-                "-nostdin",
-                "-t", "120", // matches fpcalc default
-                "-i", file.absolutePath, // NOT quoted
-                "-c:a", "copy",
-                "-f", "crc", "-"
-            )
-        ).toList().firstOrNull { it.startsWith(CRC_START) }?.substring(CRC_START.length)?.toULong(radix = 16)
     }
 }
