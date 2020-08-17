@@ -11,13 +11,12 @@ import kotlin.time.Duration
 import kotlin.time.ExperimentalTime
 import kotlin.time.seconds
 
-
 /**
  * Everything you ever wanted to know about an audio file.  And more.
  */
 @ExperimentalUnsignedTypes
 @ExperimentalTime
- class AudioInfo(
+class AudioInfo(
     val uri: URI,
     val bytes: Long = File(uri).length(),
     val bitrate: Int,
@@ -26,13 +25,9 @@ import kotlin.time.seconds
 ) {
     override fun toString(): String = GSON.toJson(this)!!
 
-
-
     fun file(): File = File(uri)
-    val fileLazy :File by lazy { File(uri) }
 
     fun fileParentName(): String = "${file().parentFile.name}/${file().name}"
-
 
     /**
      * @return percent distance (0.0..1.0)

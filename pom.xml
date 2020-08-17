@@ -13,7 +13,10 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <kotlin.version>1.4-M3</kotlin.version>
+
+        <kotlin.version>1.4.0-rc</kotlin.version>
+        <kotlin.coroutine.version>1.3.8-1.4.0-rc</kotlin.coroutine.version>
+
         <kotlin.code.style>official</kotlin.code.style>
         <junit.version>4.12</junit.version>
 
@@ -44,11 +47,10 @@
             <url>https://jitpack.io</url>
         </repository>
 
-
-            <repository>
-                <id>jaudiotagger-repository</id>
-                <url>https://dl.bintray.com/ijabz/maven</url>
-            </repository>
+        <repository>
+            <id>jaudiotagger-repository</id>
+            <url>https://dl.bintray.com/ijabz/maven</url>
+        </repository>
 
     </repositories>
 
@@ -76,7 +78,7 @@
         <dependency>
             <groupId>org.jetbrains.kotlinx</groupId>
             <artifactId>kotlinx-coroutines-jdk8</artifactId>
-            <version>1.3.7-1.4-M3</version>
+            <version>${kotlin.coroutine.version}</version>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/com.google.guava/guava -->
@@ -96,7 +98,7 @@
         <dependency>
             <groupId>com.github.salamanders</groupId>
             <artifactId>utils</artifactId>
-            <version>dcae30a209</version>
+            <version>c991bfd4af</version>
         </dependency>
 
         <dependency>
