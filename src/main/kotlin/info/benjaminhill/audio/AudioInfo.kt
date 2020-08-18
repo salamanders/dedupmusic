@@ -7,21 +7,24 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.toList
 import java.io.File
 import java.net.URI
+import java.nio.ByteBuffer
+import java.util.*
+import java.util.stream.IntStream
 import kotlin.time.Duration
 import kotlin.time.ExperimentalTime
 import kotlin.time.seconds
 
+
 /**
  * Everything you ever wanted to know about an audio file.  And more.
  */
-@ExperimentalUnsignedTypes
 @ExperimentalTime
 class AudioInfo(
     val uri: URI,
     val bytes: Long = File(uri).length(),
     val bitrate: Int,
     val duration: Duration,
-    val chroma: UIntArray,
+    val chroma: IntArray,
 ) {
     override fun toString(): String = GSON.toJson(this)!!
 
@@ -32,12 +35,17 @@ class AudioInfo(
     /**
      * @return percent distance (0.0..1.0)
      */
-    @ExperimentalUnsignedTypes
     infix fun chromaDistance(other: AudioInfo): Double = chroma.zip(other.chroma).map { (c0, c1) ->
-        (c0 xor c1).countOneBits() / UInt.SIZE_BITS.toDouble()
+        (c0 xor c1).countOneBits() / Int.SIZE_BITS.toDouble()
     }.also {
         require(it.isNotEmpty())
     }.average()
+
+    fun chroma64() : String{
+        val buf: ByteBuffer = ByteBuffer.allocate(chroma.size)
+        chroma.forEach { buf.put(it.toByte()) }
+        return Base64.getEncoder().encodeToString(buf.array())
+    }
 
     companion object {
 
@@ -70,20 +78,20 @@ class AudioInfo(
         @ExperimentalUnsignedTypes
         @ExperimentalTime
         @ExperimentalCoroutinesApi
-        internal suspend fun File.toChromaprint(): UIntArray? {
+        internal suspend fun File.toChromaprint(): IntArray? {
             val chromaFpHeader = "FINGERPRINT="
             return runCommand(
                 command = arrayOf(
                     "fpcalc",
                     "-raw", // list of integers FINGERPRINT=
-                    //"-signed", // pg_acoustid compatibility
+                    "-signed", // pg_acoustid compatibility
                     this.absolutePath
                 ),
                 maxDuration = 10.seconds
             )
                 .toList()
                 .firstOrNull { it.startsWith(chromaFpHeader) }?.substring(chromaFpHeader.length)
-                ?.split(",")?.map { it.toUInt() }?.toUIntArray()
+                ?.split(",")?.map { it.toInt() }?.toIntArray()
         }
     }
 }

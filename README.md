@@ -28,3 +28,4 @@ and should use all cores.
 - [ ] Non-hardcoded music folders
 - [ ] Pick the "better" file to keep and delete the leftover
 - [ ] Store chromaprints using default instead of raw
+- [ ] Lookup songs: https://github.com/macmanmatty/Dominate7th/blob/master/src/sample/AcoustID/AcoustID.java#L15

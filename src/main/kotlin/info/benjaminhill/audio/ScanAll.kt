@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.runBlocking
+import java.awt.Desktop
 import java.io.File
 import java.net.URI
 import java.nio.file.Paths
@@ -14,7 +15,7 @@ import kotlin.time.ExperimentalTime
 import kotlin.time.seconds
 
 val SAVED_RESULTS_FILE = File("audio_scan.jsonl")
-const val MAX_CHROMA_DIFFERENCE = 0.1
+const val MAX_CHROMA_DIFFERENCE = 0.1 // Seems sane.
 
 @ExperimentalTime
 val MAX_DURATION_DIFFERENCE = 10.seconds
@@ -35,8 +36,6 @@ fun main() = runBlocking(Dispatchers.IO) {
         .readLines()
         .map { it.toAudioInfo() }
         .filter { File(it.uri).exists() && it.chroma.size > 10 }
-
-    println("Read saved info.  Comparing ${audioInfos.size} existing files with valid info.")
 
     dedupFiles(audioInfos)
 }
@@ -91,9 +90,12 @@ private suspend fun scanAllFiles(vararg allDirs: File) {
 @ExperimentalUnsignedTypes
 @ExperimentalTime
 private suspend fun dedupFiles(
-    audioInfos: List<AudioInfo>
+    allAudioInfos: List<AudioInfo>
 ) {
-    println("# Near Duplicates (chromaprint)")
+    println("Excluding deleted files...")
+    val audioInfos = allAudioInfos.filter { it.file().exists() }
+
+    println("# Near Duplicates (chromaprint) of ${audioInfos.size} files.")
     val bestFriends = audioInfos.asFlow()
         .pMap { _, audioInfo ->
             hits.hit()
@@ -116,12 +118,12 @@ private suspend fun dedupFiles(
                 .sortedByDescending { it.bitrate }
             println("$idx: dist:$distance")
             println(" Keep:'${s0.fileParentName()}' ${s0.bitrate}")
-            println(" Trask:'${s1.fileParentName()}' ${s1.bitrate}")
+            println(" Trash:'${s1.fileParentName()}' ${s1.bitrate}")
             if (s0.file().exists() &&
                 s1.file().exists()
             ) {
-                println("Trashing ${s1.file()}")
-                //Desktop.getDesktop().moveToTrash(s1)
+                println(" ...trashing ${s1.file()}")
+                Desktop.getDesktop().moveToTrash(s1.file())
             }
 
         }
