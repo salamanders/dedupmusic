@@ -15,9 +15,9 @@ object SongTagger {
 
     private var gson = Gson()
 
-    private val PREFIX_DUR = "DURATION="
-    private val PREFIX_FP = "FINGERPRINT="
-    private val MY_CLIENT_ID = "kDv3v9F2WP"
+    private const val PREFIX_DUR = "DURATION="
+    private const val PREFIX_FP = "FINGERPRINT="
+    private const val MY_CLIENT_ID = "kDv3v9F2WP"
 
     /**
      * @return artist, album, song_name
