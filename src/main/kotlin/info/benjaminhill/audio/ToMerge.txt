@@ -1,0 +1,57 @@
+data class MusicFile(
+    val path: Path,
+) {
+    val duration: Duration
+    val bitrate: Int
+    val songName: String
+    val artistName: String = path.parent.fileName.toString()
+    val order: Int
+
+    init {
+        DUP_COUNTER.matchEntire(path.fileName.toString())!!.let { matchResult ->
+            songName = matchResult.groupValues[1]
+            order = if (matchResult.groupValues.size < 3 || matchResult.groupValues[2].isBlank()) {
+                0
+            } else {
+                matchResult.groupValues[2].toInt()
+            }
+        }
+        Mp3File(path.toFile()).also {
+            duration = Duration.ofSeconds(it.lengthInSeconds)
+            bitrate = it.bitrate
+        }
+    }
+
+    companion object {
+        val DUP_COUNTER = """(.+?)(?: \((\d+)\))?.mp3""".toRegex()
+    }
+
+}
+
+fun main() {
+    val musics = Files.walk(Paths.get("/Users/benhill/Desktop/audio/Outbox"))
+        .filter { !it.isDirectory() }
+        .filter { it.isRegularFile() }
+        .toList().take(300).map {
+            MusicFile(path = it)
+        }.toMutableList()
+
+    musics.sortWith(compareBy<MusicFile> { it.artistName }.thenBy { it.songName }.thenBy { it.order })
+
+    val dupes = musics.groupBy { it.artistName + "\t" + it.songName }.filter { it.value.size > 1 }
+
+    dupes.forEach { (name, songs) ->
+        println(name)
+        if (songs.size > 1) {
+            // 320 is better than 96, so 256 is good
+            songs
+                .sortedWith(compareBy<MusicFile> { abs(it.bitrate - 256) }.thenBy { it.order })
+                .forEach {
+                    println("  ${it.order} ${it.duration.seconds} ${it.bitrate}")
+                }
+        }
+
+    }
+
+
+}
