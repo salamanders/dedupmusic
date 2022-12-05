@@ -57,7 +57,7 @@ private suspend fun scanAllFiles(vararg allDirs: File) {
         .filter { listOf("mp3", "m4a").contains(it.extension.toLowerCase()) }
         .filter { !it.isHidden }
         .shuffled()
-        // .take(1000) // DEBUG
+    // .take(1000) // DEBUG
     require(allFiles.isNotEmpty()) { "No audio files found!" }
 
     println("Fingerprinting and saving ${allFiles.size} audio files.")

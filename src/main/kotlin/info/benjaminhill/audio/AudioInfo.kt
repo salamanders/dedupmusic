@@ -9,7 +9,6 @@ import java.io.File
 import java.net.URI
 import java.nio.ByteBuffer
 import java.util.*
-import java.util.stream.IntStream
 import kotlin.time.Duration
 import kotlin.time.ExperimentalTime
 import kotlin.time.seconds
@@ -41,7 +40,7 @@ class AudioInfo(
         require(it.isNotEmpty())
     }.average()
 
-    fun chroma64() : String{
+    fun chroma64(): String {
         val buf: ByteBuffer = ByteBuffer.allocate(chroma.size)
         chroma.forEach { buf.put(it.toByte()) }
         return Base64.getEncoder().encodeToString(buf.array())
